@@ -171,6 +171,7 @@ def train(opt):
         #Transformer model
         checkpoint_path = os.path.join(opt.checkpoint_path, 'model%s.pth' % (append))
         torch.save(model.state_dict(), checkpoint_path)
+        print("model saved to {}".format(checkpoint_path))
         #CNN model
         checkpoint_path = os.path.join(opt.checkpoint_path, 'cnn_model%s.pth' % (append))
         torch.save(cnn_model.state_dict(), checkpoint_path)
