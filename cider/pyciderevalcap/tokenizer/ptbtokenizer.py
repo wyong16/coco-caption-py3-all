@@ -17,7 +17,7 @@ import tempfile
 import itertools
 
 # path to the stanford corenlp jar
-STANFORD_CORENLP_3_4_1_JAR = 'stanford-corenlp-3.4.1.jar'
+STANFORD_CORENLP_3_4_1_JAR = '/kaggle/input/captioncodepy3/cider/pyciderevalcap/tokenizer/stanford-corenlp-3.4.1.jar'
 
 # punctuations to be removed from the sentences
 PUNCTUATIONS = ["''", "'", "``", "`", "-LRB-", "-RRB-", "-LCB-", "-RCB-", \
@@ -51,7 +51,8 @@ class PTBTokenizer:
         # ======================================================
         # save sentences to temporary file
         # ======================================================
-        path_to_jar_dirname=os.path.dirname(os.path.abspath(__file__))
+        #path_to_jar_dirname=os.path.dirname(os.path.abspath(__file__))
+        path_to_jar_dirname=os.path.dirname("/kaggle/working")
         tmp_file = tempfile.NamedTemporaryFile(delete=False, dir=path_to_jar_dirname)
         tmp_file.write(sentences)
         tmp_file.close()
