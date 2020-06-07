@@ -79,12 +79,16 @@ def moveFeat(cnn_model, data, loader):
                                                                                            'att_masks'] is not None else None]
     else:
         with torch.no_grad():
-            tmp_data = cnn_model(data['att_feats'].cuda())
+            if torch.cuda.is_available():
+                tmp_data = cnn_model(data['att_feats'].cuda())
+            else:
+                tmp_data = cnn_model(data['att_feats'])
         tmp = [data['fc_feats'][np.arange(loader.batch_size) * loader.seq_per_img],
                tmp_data,
                data['att_masks'][np.arange(loader.batch_size) * loader.seq_per_img] if data[
                                                                                            'att_masks'] is not None else None]
-    tmp = [_.cuda() if _ is not None else _ for _ in tmp]
+    if torch.cuda.is_available():
+        tmp = [_.cuda() if _ is not None else _ for _ in tmp]
     return tmp
 
 def eval_split(model, crit, loader, eval_kwargs={}):
@@ -119,7 +123,8 @@ def eval_split(model, crit, loader, eval_kwargs={}):
         if data.get('labels', None) is not None and verbose_loss:
             # forward the model to get loss
             tmp = [data['fc_feats'], data['att_feats'], data['labels'], data['masks'], data['att_masks']]
-            tmp = [_.cuda() if _ is not None else _ for _ in tmp]
+            if torch.cuda.is_available():
+                tmp = [_.cuda() if _ is not None else _ for _ in tmp]
             fc_feats, att_feats, labels, masks, att_masks = tmp
 
             with torch.no_grad():
