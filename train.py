@@ -125,14 +125,19 @@ def train(opt):
         best_val_score = infos.get('best_val_score', None)
 
     opt.vocab = loader.get_vocab()
-    model = models.setup(opt).cuda()
+    if torch.cuda.is_available():
+        model = models.setup(opt).cuda()
+    else:
+        model = models.setup(opt)
     del opt.vocab
     dp_model = torch.nn.DataParallel(model)
     lw_model = LossWrapper(model, opt)
     dp_lw_model = torch.nn.DataParallel(lw_model)
     #fgm = FGM(model)
 
-    cnn_model = ResnetBackbone().cuda()
+    cnn_model = ResnetBackbone()
+    if torch.cuda.is_available():
+        cnn_model = cnn_model.cuda()
     if opt.start_from is not None:
         model_dict = cnn_model.state_dict()
         predict_dict = torch.load(os.path.join(opt.start_from, 'cnn_model-best.pth'))
@@ -230,13 +235,18 @@ def train(opt):
             if iteration % opt.losses_log_every == 0:
                 print('Read data:', time.time() - start)
 
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             start = time.time()
 
-            data['att_feats'] = cnn_model( data['att_feats'].cuda())
+            if torch.cuda.is_available():
+                data['att_feats'] = cnn_model( data['att_feats'].cuda())
+            else:
+                data['att_feats'] = cnn_model( data['att_feats'].
             data['att_feats'] = repeat_feat(data['att_feats'])
             tmp = [data['fc_feats'], data['att_feats'], data['labels'], data['masks'], data['att_masks']]
-            tmp = [_ if _ is None else _.cuda() for _ in tmp]
+            if torch.cuda.is_available():
+                tmp = [_ if _ is None else _.cuda() for _ in tmp]
             fc_feats, att_feats, labels, masks, att_masks = tmp
 
             optimizer.zero_grad()
@@ -269,7 +279,8 @@ def train(opt):
             if cnn_optimizer is not None:
                 cnn_optimizer.step()
             train_loss = loss.item()
-            torch.cuda.synchronize()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             end = time.time()
             if not sc_flag and iteration % opt.losses_log_every == 0:
                 print("iter {} (epoch {}), train_loss = {:.3f}, time/batch = {:.3f}" \
