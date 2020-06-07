@@ -31,7 +31,7 @@ def count_bad(sen):
 
 def language_eval(dataset, preds, model_id, split):
     sys.path.append("/kaggle/input/captioncodepy3/coco-caption-py3")
-    annFile = 'annotations/captions_val2014.json'
+    annFile = '/kaggle/input/captioncodepy3/coco-caption-py3/annotations/captions_val2014.json'
     from pycocotools.coco import COCO
     from pycocoevalcap.eval import COCOEvalCap
 
