@@ -176,7 +176,7 @@ def parse_opt():
 
 def add_eval_options(parser):
     # Basic options
-    parser.add_argument('--batch_size', type=int, default=64,
+    parser.add_argument('--batch_size', type=int, default=0,
                     help='if > 0 then overrule, otherwise load from checkpoint.')
     parser.add_argument('--num_images', type=int, default=-1,
                     help='how many images to use when periodically evaluating the loss? (-1 = all)')
