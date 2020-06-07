@@ -129,7 +129,7 @@ class EncoderLayer(nn.Module):
 
     def forward(self, x, mask):
         "Follow Figure 1 (left) for connections."
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) + self.sublayer[1](x, lambda x: self.singleattn(x, x, x, mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) + self.sublayer[1](x, lambda x: self.singleattn(x, x, x))
         return self.sublayer[2](x, self.feed_forward)
 
 class Decoder(nn.Module):
