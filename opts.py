@@ -106,7 +106,7 @@ def parse_opt():
     parser.add_argument('--weight_decay', type=float, default=0,
                     help='weight_decay')
     # Transformer
-    parser.add_argument('--label_smoothing', type=float, default=0,###$$$
+    parser.add_argument('--label_smoothing', type=float, default=0.2,###$$$
                     help='')
     parser.add_argument('--noamopt', action='store_true',
                     help='')
