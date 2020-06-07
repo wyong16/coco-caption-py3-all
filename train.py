@@ -242,7 +242,7 @@ def train(opt):
             if torch.cuda.is_available():
                 data['att_feats'] = cnn_model( data['att_feats'].cuda())
             else:
-                data['att_feats'] = cnn_model( data['att_feats'].
+                data['att_feats'] = cnn_model( data['att_feats']
             data['att_feats'] = repeat_feat(data['att_feats'])
             tmp = [data['fc_feats'], data['att_feats'], data['labels'], data['masks'], data['att_masks']]
             if torch.cuda.is_available():
