@@ -123,11 +123,14 @@ class EncoderLayer(nn.Module):
         self.self_attn = self_attn
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
+        self.t = 49
+        self.sublayer_singlehead = SublayerConnection(self.t, dropout)
+        self.singleattn = SingleHeadedAttention(self.t)
         self.size = size
 
     def forward(self, x, mask):
         "Follow Figure 1 (left) for connections."
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) + self.sublayer_singlehead(x, lambda x: self.singleattn(x, x, x, mask))
         return self.sublayer[1](x, self.feed_forward)
 
 class Decoder(nn.Module):
@@ -176,6 +179,32 @@ def attention(query, key, value, mask=None, dropout=None):
     if dropout is not None:
         p_attn = dropout(p_attn)
     return torch.matmul(p_attn, value), p_attn
+
+class SingleHeadedAttention(nn.Module):
+    def __init__(self, t=49, dropout=0.1):
+        "Take in model size and number of heads."
+        super(SingleHeadedAttention, self).__init__()
+        self.t = t
+        self.linears = clones(nn.Linear(t, t), 4)
+        self.attn = None
+        self.dropout = nn.Dropout(p=dropout)
+        
+    def forward(self, query, key, value, mask=None):
+        "Implements Figure 2"
+        if mask is not None:
+            # Same mask applied to all h heads.
+            mask = mask.unsqueeze(1)
+        nbatches = query.size(0)
+        
+        # 1) Do all the linear projections in batch from d_model => h x d_k 
+        query, key, value = \
+            [l(x) for l, x in zip(self.linears, (query.transpose(1,2), key.transpose(1,2), value.transpose(1,2)))]
+        
+        # 2) Apply attention on all the projected vectors in batch. 
+        x, self.attn = attention(query, key, value, mask=mask, 
+                                 dropout=self.dropout)
+        
+        return self.linears[-1](x).transpose(1,2)
 
 class MultiHeadedAttention(nn.Module):
     def __init__(self, h, d_model, dropout=0.1):
