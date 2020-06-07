@@ -130,7 +130,7 @@ def train(opt):
     dp_model = torch.nn.DataParallel(model)
     lw_model = LossWrapper(model, opt)
     dp_lw_model = torch.nn.DataParallel(lw_model)
-    fgm = FGM(model)
+    #fgm = FGM(model)
 
     cnn_model = ResnetBackbone().cuda()
     if opt.start_from is not None:
