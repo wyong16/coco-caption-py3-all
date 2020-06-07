@@ -320,7 +320,7 @@ def train(opt):
             # make evaluation on validation set, and save model
             if (iteration % opt.save_checkpoint_every == 0):
                 # eval model
-                eval_kwargs = {'split': 'test',
+                eval_kwargs = {'split': 'val',
                                'dataset': opt.input_json}
                 eval_kwargs.update(vars(opt))
                 eval_kwargs["cnn_model"] = cnn_model
