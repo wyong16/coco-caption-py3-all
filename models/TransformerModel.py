@@ -86,14 +86,30 @@ class LayerNorm(nn.Module):
         std = x.std(-1, keepdim=True)
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
+class ChannelBatchNorm(nn.Module):
+    "Construct a layernorm module (See citation for details)."
+    def __init__(self, features, eps=1e-6):
+        super(ChannelBatchNorm, self).__init__()
+        self.norm_bn = nn.BatchNorm1d(features, affine=False)
+        self.a_2 = nn.Parameter(torch.ones((1,features,1)))
+        self.b_2 = nn.Parameter(torch.zeros((1,features,1)))
+
+    def forward(self, x):
+        return (self.a_2 * self.norm_bn(x.transpose(1,2)) + self.b_2).transpose(1,2)
+
 class SublayerConnection(nn.Module):
     """
     A residual connection followed by a layer norm.
     Note for code simplicity the norm is first as opposed to last.
     """
-    def __init__(self, size, dropout):
+
+    def __init__(self, size, dropout, is_encoder=False):
         super(SublayerConnection, self).__init__()
-        self.norm = LayerNorm(size)
+        self.is_encoder = is_encoder
+        if is_encoder:
+            self.norm = ChannelBatchNorm(size)
+        else:
+            self.norm = LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, sublayer):
@@ -106,7 +122,7 @@ class EncoderLayer(nn.Module):
         super(EncoderLayer, self).__init__()
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout), 2)
+        self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
         self.size = size
 
     def forward(self, x, mask):
