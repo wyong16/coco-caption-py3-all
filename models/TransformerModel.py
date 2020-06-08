@@ -122,18 +122,18 @@ class EncoderLayer(nn.Module):
         super(EncoderLayer, self).__init__()
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
-        #self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 3)
-        #self.t = 49
-        #self.singleattn = SingleHeadedAttention(self.t)
+        #self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
+        self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 3)
+        self.t = 49
+        self.singleattn = SingleHeadedAttention(self.t)
         self.size = size
 
     def forward(self, x, mask):
         "Follow Figure 1 (left) for connections."
-        #x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) + self.sublayer[1](x, lambda x: self.singleattn(x, x, x))
-        #return self.sublayer[2](x, self.feed_forward)
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
-        return self.sublayer[1](x, self.feed_forward)
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask)) + self.sublayer[1](x, lambda x: self.singleattn(x, x, x))
+        return self.sublayer[2](x, self.feed_forward)
+        #x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        #return self.sublayer[1](x, self.feed_forward)
 
 class Decoder(nn.Module):
     "Generic N layer decoder with masking."
