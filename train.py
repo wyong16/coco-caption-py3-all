@@ -198,7 +198,7 @@ def train(opt):
                         p.requires_grad = True
                     # Fix the first few layers:
                     print(cnn_model._modules['module']._modules['resnet_conv']._modules)
-                    for module in cnn_model._modules['module']._modules['resnet_conv']._modules.values()[:5]:
+                    for module in cnn_model._modules['module']._modules['resnet_conv'][:5]._modules.values():
                         for p in module.parameters():
                             p.requires_grad = False
                     cnn_model.train()
