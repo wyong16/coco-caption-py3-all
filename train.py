@@ -189,21 +189,21 @@ def train(opt):
         while True:
             if epoch_done:
                 if  opt.fix_cnn or epoch < cnn_after:
-                    for p in cnn_model._modules['module'].parameters():
+                    for p in cnn_model._modules['resnet_conv'].parameters():
                         p.requires_grad = False
                     cnn_model.eval()
                     cnn_optimizer = None
                 else:
-                    for p in cnn_model._modules['module'].parameters():
+                    for p in cnn_model._modules['resnet_conv'].parameters():
                         p.requires_grad = True
                     # Fix the first few layers:
-                    for module in cnn_model._modules['module'].resnet_conv._modules.values()[:5]:
+                    for module in cnn_model._modules['resnet_conv']._modules.values()[:5]:
                         for p in module.parameters():
                             p.requires_grad = False
-                    cnn_model._modules['module'].resnet_conv.train()
+                    cnn_model._modules['resnet_conv'].train()
                     # Constructing CNN parameters for optimization, only fine-tuning higher layers
                     cnn_optimizer = torch.optim.Adam(
-                        (filter(lambda p: p.requires_grad, cnn_model._modules['module'].resnet_conv.parameters())),
+                        (filter(lambda p: p.requires_grad, cnn_model._modules['resnet_conv'].parameters())),
                         lr=2e-6 if (opt.self_critical_after != -1 and epoch >= opt.self_critical_after) else 5e-5, betas=(0.8, 0.999))
 
                 if not opt.noamopt and not opt.reduce_on_plateau:
