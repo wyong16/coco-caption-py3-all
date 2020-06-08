@@ -122,7 +122,7 @@ class EncoderLayer(nn.Module):
         super(EncoderLayer, self).__init__()
         self.self_attn = self_attn
         self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=False), 2)
+        self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
         #self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 3)
         #self.t = 49
         #self.singleattn = SingleHeadedAttention(self.t)
