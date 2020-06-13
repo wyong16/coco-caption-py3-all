@@ -174,8 +174,9 @@ def train(opt):
         print("model saved to {}".format(checkpoint_path))
         #CNN model
         checkpoint_path = os.path.join(opt.checkpoint_path, 'cnn_model%s.pth' % (append))
-        torch.save(cnn_model.state_dict(), checkpoint_path)
-        print("model saved to {}".format(checkpoint_path))
+        if not os.path.exists(checkpoint_path):
+            torch.save(cnn_model.state_dict(), checkpoint_path)
+            print("model saved to {}".format(checkpoint_path))
         optimizer_path = os.path.join(opt.checkpoint_path, 'optimizer%s.pth' % (append))
         torch.save(optimizer.state_dict(), optimizer_path)
         with open(os.path.join(opt.checkpoint_path, 'infos_' + opt.id + '%s.pkl' % (append)), 'wb') as f:
