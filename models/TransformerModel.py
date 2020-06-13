@@ -218,10 +218,9 @@ class SpatialGroupEnhance(nn.Module):
         self.bias     = nn.Parameter(torch.ones(1, groups, 1))
         self.sig      = nn.Sigmoid()
 
-    def forward(self, x, x_pool): # x:(b, t, c) x_pool:(b,c,1)
-        x = x.transpose(1,2)  # (b,c,t)
-        B, C, T = x.size()
-        assert C % self.groups == 0
+    def forward(self, x, x_pool): # x:(b, groups, t, c//groups) x_pool:(b,c,1)
+        x = x.transpose(-2,-1)
+        B, _, _, T = x.size()
         x = x.view(B * self.groups, -1, T)
         x_pool = x_pool.view(B * self.groups, -1, 1)
         xn = x * x_pool
