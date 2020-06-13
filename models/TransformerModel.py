@@ -331,11 +331,12 @@ class TransformerModel(AttModel):
         "Helper: Construct a model from hyperparameters."
         c = copy.deepcopy
         attn = MultiHeadedAttention(h, d_model)
-        w_attn = WeightedMultiHeadedAttention(h, d_model)
+        #w_attn = WeightedMultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
         model = EncoderDecoder(
-            Encoder(EncoderLayer(d_model, c(w_attn), c(ff), dropout), N),
+            #Encoder(EncoderLayer(d_model, c(w_attn), c(ff), dropout), N),
+            Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
             Decoder(DecoderLayer(d_model, c(attn), c(attn), 
                                  c(ff), dropout), N),
             lambda x:x, # nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
