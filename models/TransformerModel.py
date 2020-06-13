@@ -280,7 +280,7 @@ class WeightedMultiHeadedAttention(MultiHeadedAttention):
         x = self.linears[-1](x)
 
         # add channel map
-        channel_map = self.se(q_pool)
+        channel_map = self.se(q_pool.transpose(-2,-1))
         x = x * channel_map
         return x
 
