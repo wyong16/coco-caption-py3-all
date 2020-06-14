@@ -241,6 +241,7 @@ class WeightedMultiHeadedAttention(MultiHeadedAttention):
         super(WeightedMultiHeadedAttention, self).__init__(h, d_model)
         assert d_model % h == 0
         # We assume d_v always equals d_k
+        channel = d_model
         self.se = nn.Sequential(
             nn.Linear(channel, channel // reduction, bias=False),
             nn.ReLU(inplace=True),
