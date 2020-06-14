@@ -110,7 +110,7 @@ class SublayerConnection(nn.Module):
             self.norm = ChannelBatchNorm(size)
         else:
             self.norm = LayerNorm(size)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout,inplace=True)
 
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
@@ -187,7 +187,7 @@ class MultiHeadedAttention(nn.Module):
         self.h = h
         self.linears = clones(nn.Linear(d_model, d_model), 4)
         self.attn = None
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=dropout,inplace=True)
         
     def forward(self, query, key, value, mask=None):
         "Implements Figure 2"
@@ -214,11 +214,11 @@ class SpatialGroupEnhance(nn.Module):
     def __init__(self, groups = 8):
         super(SpatialGroupEnhance, self).__init__()
         self.groups   = groups
-        self.weight   = nn.Parameter(torch.zeros(1, groups, 1))
-        self.bias     = nn.Parameter(torch.ones(1, groups, 1))
+        self.weight   = nn.Parameter(torch.ones(1, groups, 1))
+        self.bias     = nn.Parameter(torch.zeros(1, groups, 1))
         self.sig      = nn.Sigmoid()
 
-    def forward(self, x, x_pool): # x:(b, groups, t, c//groups) x_pool:(b,c,1)
+    def forward(self, x, x_pool): # x:(b,8,t,c//8) x_pool:(b,c,1)
         x = x.transpose(-2,-1)
         B, _, _, T = x.size()
         x = x.view(B * self.groups, -1, T)
@@ -231,24 +231,25 @@ class SpatialGroupEnhance(nn.Module):
         t = t / std
         t = t.view(B, self.groups, T)
         t = t * self.weight + self.bias
-        t = t.view(B, self.groups, T, 1)
-        t = self.sig(t) #(b, groups, t, 1)
+        t = t.view(B, self.groups, T, 1)#(b, groups, t, 1)
+        t = self.sig(t) 
         return t
 
 class WeightedMultiHeadedAttention(MultiHeadedAttention):
-    def __init__(self, h, d_model, dropout=0.1):
+    def __init__(self, h, d_model, dropout=0.1, reduction=8):
         "Take in model size and number of heads."
         super(WeightedMultiHeadedAttention, self).__init__(h, d_model)
         assert d_model % h == 0
         # We assume d_v always equals d_k
-        self.se = nn.Sequential(nn.Linear(d_model, d_model // 2),
-                                nn.ReLU(),
-                                nn.Dropout(dropout),
-                                nn.Linear(d_model // 2, d_model),
-                                nn.Sigmoid()
-                                )
+        self.se = nn.Sequential(
+            nn.Linear(channel, channel // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Sigmoid()
+        )
         self.sge = SpatialGroupEnhance(groups=h)
         self.pool = nn.AdaptiveAvgPool1d(1) # only for image encdoer now  !!!
+        self.linear_reweight = clones(nn.Linear(d_model, d_model),2)
 
     def forward(self, query, key, value, mask=None):
         "Implements Figure 2"
@@ -269,20 +270,23 @@ class WeightedMultiHeadedAttention(MultiHeadedAttention):
         x, self.attn = attention(query, key, value, mask=mask, 
                                  dropout=self.dropout)
 
-        # add spatial map
+        # calculate spatial map
         spatial_map = self.sge(x, q_pool)
-        x = x * spatial_map
-        
+        spatial_map = spatial_map.expand_as(x).transpose(1, 2).contiguous() \
+             .view(nbatches, -1, self.h * self.d_k)
+
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
              .view(nbatches, -1, self.h * self.d_k)
 
-        x = self.linears[-1](x)
+        # add spatial map
+        x_sp = self.linear_reweight[0](x) * spatial_map
 
         # add channel map
         channel_map = self.se(q_pool.transpose(-2,-1))
-        x = x * channel_map
-        return x
+        x_ch = self.linear_reweight[1](x) * channel_map
+
+        return self.linears[-1](x_sp+x_ch)
 
 class PositionwiseFeedForward(nn.Module):
     "Implements FFN equation."
@@ -290,10 +294,10 @@ class PositionwiseFeedForward(nn.Module):
         super(PositionwiseFeedForward, self).__init__()
         self.w_1 = nn.Linear(d_model, d_ff)
         self.w_2 = nn.Linear(d_ff, d_model)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout,inplace=True)
 
     def forward(self, x):
-        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+        return self.w_2(self.dropout(F.relu(self.w_1(x),inplace=True)))
 
 class Embeddings(nn.Module):
     def __init__(self, d_model, vocab):
@@ -308,7 +312,7 @@ class PositionalEncoding(nn.Module):
     "Implement the PE function."
     def __init__(self, d_model, dropout, max_len=5000):
         super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = nn.Dropout(p=dropout,inplace=True)
         
         # Compute the positional encodings once in log space.
         pe = torch.zeros(max_len, d_model)
@@ -331,12 +335,12 @@ class TransformerModel(AttModel):
         "Helper: Construct a model from hyperparameters."
         c = copy.deepcopy
         attn = MultiHeadedAttention(h, d_model)
-        #w_attn = WeightedMultiHeadedAttention(h, d_model)
+        w_attn = WeightedMultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
         model = EncoderDecoder(
-            #Encoder(EncoderLayer(d_model, c(w_attn), c(ff), dropout), N),
-            Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+            Encoder(EncoderLayer(d_model, c(w_attn), c(ff), dropout), N),
+            #Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
             Decoder(DecoderLayer(d_model, c(attn), c(attn), 
                                  c(ff), dropout), N),
             lambda x:x, # nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
@@ -360,8 +364,8 @@ class TransformerModel(AttModel):
         self.att_embed = nn.Sequential(*(
                                     ((nn.BatchNorm1d(self.att_feat_size),) if self.use_bn else ())+
                                     (nn.Linear(self.att_feat_size, self.input_encoding_size),
-                                    nn.ReLU(),
-                                    nn.Dropout(self.drop_prob_lm))+
+                                    nn.ReLU(inplace=True),
+                                    nn.Dropout(self.drop_prob_lm,inplace=True))+
                                     ((nn.BatchNorm1d(self.input_encoding_size),) if self.use_bn==2 else ())))
         
         delattr(self, 'embed')
