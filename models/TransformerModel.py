@@ -110,7 +110,7 @@ class SublayerConnection(nn.Module):
             self.norm = ChannelBatchNorm(size)
         else:
             self.norm = LayerNorm(size)
-        self.dropout = nn.Dropout(dropout,inplace=True)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
@@ -187,7 +187,7 @@ class MultiHeadedAttention(nn.Module):
         self.h = h
         self.linears = clones(nn.Linear(d_model, d_model), 4)
         self.attn = None
-        self.dropout = nn.Dropout(p=dropout,inplace=True)
+        self.dropout = nn.Dropout(p=dropout)
         
     def forward(self, query, key, value, mask=None):
         "Implements Figure 2"
@@ -244,7 +244,7 @@ class WeightedMultiHeadedAttention(MultiHeadedAttention):
         channel = d_model
         self.se = nn.Sequential(
             nn.Linear(channel, channel // reduction, bias=False),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Linear(channel // reduction, channel, bias=False),
             nn.Sigmoid()
         )
@@ -295,10 +295,10 @@ class PositionwiseFeedForward(nn.Module):
         super(PositionwiseFeedForward, self).__init__()
         self.w_1 = nn.Linear(d_model, d_ff)
         self.w_2 = nn.Linear(d_ff, d_model)
-        self.dropout = nn.Dropout(dropout,inplace=True)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        return self.w_2(self.dropout(F.relu(self.w_1(x),inplace=True)))
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
 
 class Embeddings(nn.Module):
     def __init__(self, d_model, vocab):
@@ -313,7 +313,7 @@ class PositionalEncoding(nn.Module):
     "Implement the PE function."
     def __init__(self, d_model, dropout, max_len=5000):
         super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout,inplace=True)
+        self.dropout = nn.Dropout(p=dropout)
         
         # Compute the positional encodings once in log space.
         pe = torch.zeros(max_len, d_model)
@@ -365,8 +365,8 @@ class TransformerModel(AttModel):
         self.att_embed = nn.Sequential(*(
                                     ((nn.BatchNorm1d(self.att_feat_size),) if self.use_bn else ())+
                                     (nn.Linear(self.att_feat_size, self.input_encoding_size),
-                                    nn.ReLU(inplace=True),
-                                    nn.Dropout(self.drop_prob_lm,inplace=True))+
+                                    nn.ReLU(),
+                                    nn.Dropout(self.drop_prob_lm))+
                                     ((nn.BatchNorm1d(self.input_encoding_size),) if self.use_bn==2 else ())))
         
         delattr(self, 'embed')
