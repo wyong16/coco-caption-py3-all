@@ -69,8 +69,10 @@ class Encoder(nn.Module):
         
     def forward(self, x, mask):
         "Pass the input (and mask) through each layer in turn."
+        scores_prev = 0
         for layer in self.layers:
-            x = layer(x, mask)
+            x = layer(x, mask, scores_prev)
+            scores_prev = layer.self_attn.scores
         return self.norm(x)
 
 class LayerNorm(nn.Module):
@@ -125,9 +127,9 @@ class EncoderLayer(nn.Module):
         self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
         self.size = size
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, scores_prev):
         "Follow Figure 1 (left) for connections."
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask, scores_prev))
         return self.sublayer[1](x, self.feed_forward)
 
 class Decoder(nn.Module):
@@ -138,8 +140,12 @@ class Decoder(nn.Module):
         self.norm = LayerNorm(layer.size)
         
     def forward(self, x, memory, src_mask, tgt_mask):
+        self_scores_prev = 0
+        cross_scores_prev = 0
         for layer in self.layers:
-            x = layer(x, memory, src_mask, tgt_mask)
+            x = layer(x, memory, src_mask, tgt_mask, self_scores_prev, cross_scores_prev)
+            self_scores_prev = layer.self_attn.scores
+            cross_scores_prev = layer.src_attn.scores
         return self.norm(x)
 
 class DecoderLayer(nn.Module):
@@ -152,11 +158,11 @@ class DecoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
  
-    def forward(self, x, memory, src_mask, tgt_mask):
+    def forward(self, x, memory, src_mask, tgt_mask, self_scores_prev, cross_scores_prev):
         "Follow Figure 1 (right) for connections."
         m = memory
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
-        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask, self_scores_prev))
+        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask, cross_scores_prev))
         return self.sublayer[2](x, self.feed_forward)
 
 def subsequent_mask(size):
@@ -165,17 +171,19 @@ def subsequent_mask(size):
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
-def attention(query, key, value, mask=None, dropout=None):
+def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.95):
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) \
              / math.sqrt(d_k)
+    if scores_prev != 0 :
+        scores = alpha * scores + (1-alpha) * scores_prev
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e9)
     p_attn = F.softmax(scores, dim = -1)
     if dropout is not None:
         p_attn = dropout(p_attn)
-    return torch.matmul(p_attn, value), p_attn
+    return torch.matmul(p_attn, value), p_attn, scores
 
 class MultiHeadedAttention(nn.Module):
     def __init__(self, h, d_model, dropout=0.1):
@@ -188,8 +196,9 @@ class MultiHeadedAttention(nn.Module):
         self.linears = clones(nn.Linear(d_model, d_model), 4)
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
+        self.scores = 0
         
-    def forward(self, query, key, value, mask=None):
+    def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
         if mask is not None:
             # Same mask applied to all h heads.
@@ -202,92 +211,13 @@ class MultiHeadedAttention(nn.Module):
              for l, x in zip(self.linears, (query, key, value))]
         
         # 2) Apply attention on all the projected vectors in batch. 
-        x, self.attn = attention(query, key, value, mask=mask, 
-                                 dropout=self.dropout)
+        x, self.attn, self.scores = attention(query, key, value, mask=mask, 
+                                 dropout=self.dropout,scores_prev=scores_prev)
         
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
              .view(nbatches, -1, self.h * self.d_k)
         return self.linears[-1](x)
-
-class SpatialGroupEnhance(nn.Module):
-    def __init__(self, groups = 8):
-        super(SpatialGroupEnhance, self).__init__()
-        self.groups   = groups
-        self.weight   = nn.Parameter(torch.ones(1, groups, 1))
-        self.bias     = nn.Parameter(torch.zeros(1, groups, 1))
-        self.sig      = nn.Sigmoid()
-
-    def forward(self, x, x_pool): # x:(b,8,t,c//8) x_pool:(b,c,1)
-        x = x.transpose(-2,-1)
-        B, _, _, T = x.size()
-        x = x.view(B * self.groups, -1, T)
-        x_pool = x_pool.view(B * self.groups, -1, 1)
-        xn = x * x_pool
-        xn = xn.sum(dim=1, keepdim=True)
-        t = xn.view(B * self.groups, -1)
-        t = t - t.mean(dim=1, keepdim=True)
-        std = t.std(dim=1, keepdim=True) + 1e-5
-        t = t / std
-        t = t.view(B, self.groups, T)
-        t = t * self.weight + self.bias
-        t = t.view(B, self.groups, T, 1)#(b, groups, t, 1)
-        t = self.sig(t) 
-        return t
-
-class WeightedMultiHeadedAttention(MultiHeadedAttention):
-    def __init__(self, h, d_model, dropout=0.1, reduction=8):
-        "Take in model size and number of heads."
-        super(WeightedMultiHeadedAttention, self).__init__(h, d_model)
-        assert d_model % h == 0
-        # We assume d_v always equals d_k
-        channel = d_model
-        self.se = nn.Sequential(
-            nn.Linear(channel, channel // reduction, bias=False),
-            nn.ReLU(),
-            nn.Linear(channel // reduction, channel, bias=False),
-            nn.Sigmoid()
-        )
-        self.sge = SpatialGroupEnhance(groups=h)
-        self.pool = nn.AdaptiveAvgPool1d(1) # only for image encdoer now  !!!
-        self.linear_reweight = clones(nn.Linear(d_model, d_model),2)
-
-    def forward(self, query, key, value, mask=None):
-        "Implements Figure 2"
-        if mask is not None:
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(1)
-
-        nbatches = query.size(0)
-        
-        # 1) Do all the linear projections in batch from d_model => h x d_k 
-        query, key, value = \
-            [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-             for l, x in zip(self.linears, (query, key, value))]
-
-        q_pool = self.pool(query.transpose(-2,-1).contiguous().view(nbatches, self.h * self.d_k, -1))
-        
-        # 2) Apply attention on all the projected vectors in batch. 
-        x, self.attn = attention(query, key, value, mask=mask, 
-                                 dropout=self.dropout)
-
-        # calculate spatial map
-        spatial_map = self.sge(x, q_pool)
-        spatial_map = spatial_map.expand_as(x).transpose(1, 2).contiguous() \
-             .view(nbatches, -1, self.h * self.d_k)
-
-        # 3) "Concat" using a view and apply a final linear. 
-        x = x.transpose(1, 2).contiguous() \
-             .view(nbatches, -1, self.h * self.d_k)
-
-        # add spatial map
-        x_sp = self.linear_reweight[0](x) * spatial_map
-
-        # add channel map
-        channel_map = self.se(q_pool.transpose(-2,-1))
-        x_ch = self.linear_reweight[1](x) * channel_map
-
-        return self.linears[-1](x_sp+x_ch)
 
 class PositionwiseFeedForward(nn.Module):
     "Implements FFN equation."
@@ -336,12 +266,10 @@ class TransformerModel(AttModel):
         "Helper: Construct a model from hyperparameters."
         c = copy.deepcopy
         attn = MultiHeadedAttention(h, d_model)
-        w_attn = WeightedMultiHeadedAttention(h, d_model)
         ff = PositionwiseFeedForward(d_model, d_ff, dropout)
         position = PositionalEncoding(d_model, dropout)
         model = EncoderDecoder(
-            Encoder(EncoderLayer(d_model, c(w_attn), c(ff), dropout), N),
-            #Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+            Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
             Decoder(DecoderLayer(d_model, c(attn), c(attn), 
                                  c(ff), dropout), N),
             lambda x:x, # nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
