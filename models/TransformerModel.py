@@ -176,7 +176,7 @@ def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha =
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) \
              / math.sqrt(d_k)
-    if scores_prev != 0 :
+    if torch.is_tensor(scores_prev):
         scores = alpha * scores + (1-alpha) * scores_prev
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e9)
