@@ -23,6 +23,7 @@ import numpy as np
 from .CaptionModel import CaptionModel
 from .AttModel import sort_pack_padded_sequence, pad_unsort_packed_sequence, pack_wrapper, AttModel
 
+alpha_att = 0.1
 class EncoderDecoder(nn.Module):
     """
     A standard Encoder-Decoder architecture. Base for this and many 
@@ -171,12 +172,13 @@ def subsequent_mask(size):
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
-def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.5):
+def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) \
              / math.sqrt(d_k)
     if torch.is_tensor(scores_prev):
+        print(alpha)
         scores = alpha * scores + (1-alpha) * scores_prev
     if mask is not None:
         scores = scores.masked_fill(mask == 0, -1e9)
@@ -212,7 +214,7 @@ class MultiHeadedAttention(nn.Module):
         
         # 2) Apply attention on all the projected vectors in batch. 
         x, self.attn, self.scores = attention(query, key, value, mask=mask, 
-                                 dropout=self.dropout,scores_prev=scores_prev)
+                                 dropout=self.dropout,scores_prev=scores_prev, alpha=alpha_att)
         
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
@@ -285,6 +287,8 @@ class TransformerModel(AttModel):
 
     def __init__(self, opt):
         super(TransformerModel, self).__init__(opt)
+        alpha_att = opt.alpha_att
+
         self.opt = opt
         # self.config = yaml.load(open(opt.config_file))
         # d_model = self.input_encoding_size # 512
