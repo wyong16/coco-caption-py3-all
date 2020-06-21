@@ -171,7 +171,7 @@ def subsequent_mask(size):
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
-def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
+def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.5):
     "Compute 'Scaled Dot Product Attention'"
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) \
