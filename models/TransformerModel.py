@@ -287,7 +287,8 @@ class TransformerModel(AttModel):
 
     def __init__(self, opt):
         super(TransformerModel, self).__init__(opt)
-        global alpha_att = opt.alpha_att
+        global alpha_att
+        alpha_att = opt.alpha_att
 
         self.opt = opt
         # self.config = yaml.load(open(opt.config_file))
