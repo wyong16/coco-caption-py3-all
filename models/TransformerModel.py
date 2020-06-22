@@ -172,19 +172,25 @@ def subsequent_mask(size):
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
-def attention(query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
-    "Compute 'Scaled Dot Product Attention'"
-    d_k = query.size(-1)
-    scores = torch.matmul(query, key.transpose(-2, -1)) \
-             / math.sqrt(d_k)
-    if torch.is_tensor(scores_prev):
-        scores = alpha * scores + (1-alpha) * scores_prev
-    if mask is not None:
-        scores = scores.masked_fill(mask == 0, -1e9)
-    p_attn = F.softmax(scores, dim = -1)
-    if dropout is not None:
-        p_attn = dropout(p_attn)
-    return torch.matmul(p_attn, value), p_attn, scores
+class attention(nn.Module):
+    def __init__(self,h=8):
+        super(attention, self).__init__()
+        self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
+
+    def forward(self, query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
+        "Compute 'Scaled Dot Product Attention'"
+        d_k = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1)) \
+                / math.sqrt(d_k)
+        if torch.is_tensor(scores_prev):
+            alpha = torch.sigmoid(self.alpha)
+            scores = alpha * scores + (1-alpha) * scores_prev
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
+        p_attn = F.softmax(scores, dim = -1)
+        if dropout is not None:
+            p_attn = dropout(p_attn)
+        return torch.matmul(p_attn, value), p_attn, scores
 
 class MultiHeadedAttention(nn.Module):
     def __init__(self, h, d_model, dropout=0.1):
@@ -198,6 +204,7 @@ class MultiHeadedAttention(nn.Module):
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
         self.scores = 0
+        self.attention = attention(h)
         
     def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
@@ -212,7 +219,7 @@ class MultiHeadedAttention(nn.Module):
              for l, x in zip(self.linears, (query, key, value))]
         
         # 2) Apply attention on all the projected vectors in batch. 
-        x, self.attn, self.scores = attention(query, key, value, mask=mask, 
+        x, self.attn, self.scores = self.attention(query, key, value, mask=mask, 
                                  dropout=self.dropout,scores_prev=scores_prev, alpha=alpha_att)
         
         # 3) "Concat" using a view and apply a final linear. 
