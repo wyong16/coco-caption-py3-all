@@ -286,9 +286,9 @@ class TransformerModel(AttModel):
         
         # This was important from their code. 
         # Initialize parameters with Glorot / fan_avg.
-        for p in model.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        #for p in model.parameters():
+        #    if p.dim() > 1:
+        #        nn.init.xavier_uniform_(p)
         return model
 
     def __init__(self, opt):
