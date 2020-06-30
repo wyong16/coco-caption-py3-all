@@ -93,12 +93,10 @@ class ChannelBatchNorm(nn.Module):
     "Construct a layernorm module (See citation for details)."
     def __init__(self, features, eps=1e-6):
         super(ChannelBatchNorm, self).__init__()
-        self.norm_bn = nn.BatchNorm1d(features, affine=False)
-        self.a_2 = nn.Parameter(torch.ones((1,features,1)))
-        self.b_2 = nn.Parameter(torch.zeros((1,features,1)))
+        self.norm_bn = nn.BatchNorm1d(features)
 
     def forward(self, x):
-        return (self.a_2 * self.norm_bn(x.transpose(1,2)) + self.b_2).transpose(1,2)
+        return self.norm_bn(x.transpose(1,2)).transpose(1,2)
 
 class SublayerConnection(nn.Module):
     """
@@ -173,9 +171,14 @@ def subsequent_mask(size):
     return torch.from_numpy(subsequent_mask) == 0
 
 class attention(nn.Module):
-    def __init__(self,h=8):
+    def __init__(self,d_model=512, dropout=0.1,h=8):
         super(attention, self).__init__()
-        self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
+        #self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
+        self.d_k = d_model // h
+        self.alpha = nn.Sequential(LayerNorm(self.d_k),
+                                   nn.Dropout(p=dropout),
+                                   nn.Linear(self.d_k, 1),
+                                   nn.Sigmoid() )
 
     def forward(self, query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
         "Compute 'Scaled Dot Product Attention'"
@@ -183,7 +186,8 @@ class attention(nn.Module):
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                 / math.sqrt(d_k)
         if torch.is_tensor(scores_prev):
-            alpha = torch.sigmoid(self.alpha)
+            #alpha = torch.sigmoid(self.alpha)
+            alpha = self.alpha(query)
             scores = alpha * scores + (1-alpha) * scores_prev
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
@@ -204,7 +208,7 @@ class MultiHeadedAttention(nn.Module):
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
         self.scores = 0
-        self.attention = attention(h)
+        self.attention = attention(d_model, dropout, h)
         
     def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
@@ -286,8 +290,8 @@ class TransformerModel(AttModel):
         
         # This was important from their code. 
         # Initialize parameters with Glorot / fan_avg.
-        for name, p in model.named_parameters():
-            if p.dim() > 1 and name.find("norm") == -1 and name.find("attention") == -1:
+        for p in model.parameters():
+            if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
         return model
 
