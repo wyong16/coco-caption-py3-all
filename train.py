@@ -130,12 +130,6 @@ def train(opt):
     else:
         model = models.setup(opt)
     del opt.vocab
-
-    # Initialize parameters with Glorot / fan_avg.
-    for p in model.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
     dp_model = torch.nn.DataParallel(model)
     lw_model = LossWrapper(model, opt)
     dp_lw_model = torch.nn.DataParallel(lw_model)
