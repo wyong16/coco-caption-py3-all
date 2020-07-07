@@ -208,7 +208,6 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.scores = 0
         self.attention = attention(d_model, dropout, h)
-        self.norm_q = LayerNorm(d_model)
         
     def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
