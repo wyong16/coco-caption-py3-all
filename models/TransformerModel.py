@@ -175,8 +175,7 @@ class attention(nn.Module):
         super(attention, self).__init__()
         #self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
         self.d_k = d_model // h
-        self.alpha = nn.Sequential(LayerNorm(self.d_k),
-                                   nn.Dropout(p=dropout),
+        self.alpha = nn.Sequential(nn.Dropout(p=dropout),
                                    nn.Linear(self.d_k, 1),
                                    nn.Sigmoid() )
 
@@ -209,6 +208,7 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.scores = 0
         self.attention = attention(d_model, dropout, h)
+        self.norm_q = LayerNorm(d_model)
         
     def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
@@ -218,9 +218,13 @@ class MultiHeadedAttention(nn.Module):
         nbatches = query.size(0)
         
         # 1) Do all the linear projections in batch from d_model => h x d_k 
-        query, key, value = \
+        #query, key, value = \
+        #    [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+        #     for l, x in zip(self.linears, (query, key, value))]
+        query = self.norm_q(self.linears[0](query)).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+        key, value = \
             [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-             for l, x in zip(self.linears, (query, key, value))]
+             for l, x in zip(self.linears[1:], (key, value))]
         
         # 2) Apply attention on all the projected vectors in batch. 
         x, self.attn, self.scores = self.attention(query, key, value, mask=mask, 
