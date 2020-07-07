@@ -173,11 +173,11 @@ def subsequent_mask(size):
 class attention(nn.Module):
     def __init__(self,d_model=512, dropout=0.1,h=8):
         super(attention, self).__init__()
-        #self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
+        self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
         self.d_k = d_model // h
-        self.alpha = nn.Sequential(nn.Dropout(p=dropout),
-                                   nn.Linear(self.d_k, 1),
-                                   nn.Sigmoid() )
+        # self.alpha = nn.Sequential(nn.Dropout(p=dropout),
+        #                            nn.Linear(self.d_k, 1),
+        #                            nn.Sigmoid() )
 
     def forward(self, query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
         "Compute 'Scaled Dot Product Attention'"
@@ -185,8 +185,8 @@ class attention(nn.Module):
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                 / math.sqrt(d_k)
         if torch.is_tensor(scores_prev):
-            #alpha = torch.sigmoid(self.alpha)
-            alpha = self.alpha(query)
+            alpha = torch.sigmoid(self.alpha)
+            # alpha = self.alpha(query)
             scores = alpha * scores + (1-alpha) * scores_prev
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
@@ -218,13 +218,9 @@ class MultiHeadedAttention(nn.Module):
         nbatches = query.size(0)
         
         # 1) Do all the linear projections in batch from d_model => h x d_k 
-        #query, key, value = \
-        #    [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-        #     for l, x in zip(self.linears, (query, key, value))]
-        query = self.norm_q(self.linears[0](query)).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-        key, value = \
-            [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
-             for l, x in zip(self.linears[1:], (key, value))]
+        query, key, value = \
+           [l(x).view(nbatches, -1, self.h, self.d_k).transpose(1, 2)
+            for l, x in zip(self.linears, (query, key, value))]
         
         # 2) Apply attention on all the projected vectors in batch. 
         x, self.attn, self.scores = self.attention(query, key, value, mask=mask, 
@@ -294,9 +290,9 @@ class TransformerModel(AttModel):
         
         # This was important from their code. 
         # Initialize parameters with Glorot / fan_avg.
-        for p in model.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        # for p in model.parameters():
+        #     if p.dim() > 1:
+        #         nn.init.xavier_uniform_(p)
         return model
 
     def __init__(self, opt):
