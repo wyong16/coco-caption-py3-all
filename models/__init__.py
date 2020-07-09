@@ -59,10 +59,5 @@ def setup(opt):
         assert os.path.isdir(opt.start_from)," %s must be a a path" % opt.start_from
         assert os.path.isfile(os.path.join(opt.start_from,"infos_"+opt.id+".pkl")),"infos.pkl file does not exist in path %s"%opt.start_from
         model.load_state_dict(torch.load(os.path.join(opt.start_from, 'model.pth')))
-    else:
-        # Initialize parameters with Glorot / fan_avg.
-        for p in model.parameters():
-                if p.dim() > 1:
-                    nn.init.xavier_uniform_(p)
 
     return model

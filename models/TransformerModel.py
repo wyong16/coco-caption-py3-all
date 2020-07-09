@@ -170,14 +170,32 @@ def subsequent_mask(size):
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
+class SELayer(nn.Module):
+    def __init__(self, channel, mul=4):
+        super(SELayer, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel * mul, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel * mul, channel // 2, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c//2, 1, 1)
+        return y
+
 class attention(nn.Module):
     def __init__(self,d_model=512, dropout=0.1,h=8):
         super(attention, self).__init__()
-        self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
+        #self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
         self.d_k = d_model // h
         # self.alpha = nn.Sequential(nn.Dropout(p=dropout),
         #                            nn.Linear(self.d_k, 1),
         #                            nn.Sigmoid() )
+        self.alpha = SELayer(channel=h*2)
 
     def forward(self, query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
         "Compute 'Scaled Dot Product Attention'"
@@ -185,8 +203,8 @@ class attention(nn.Module):
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                 / math.sqrt(d_k)
         if torch.is_tensor(scores_prev):
-            alpha = torch.sigmoid(self.alpha)
-            # alpha = self.alpha(query)
+            # alpha = torch.sigmoid(self.alpha)
+            alpha = self.alpha(torch.cat((scores,scores_prev),1))
             scores = alpha * scores + (1-alpha) * scores_prev
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
