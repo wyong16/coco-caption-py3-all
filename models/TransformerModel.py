@@ -170,32 +170,20 @@ def subsequent_mask(size):
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
-class SELayer(nn.Module):
-    def __init__(self, channel, mul=4):
-        super(SELayer, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channel, channel * mul, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel * mul, channel // 2, bias=False),
-            nn.Sigmoid()
-        )
+class AoA(nn.Module):
+    def __init__(self,d_model=512, dropout_aoa=0.3):
+        super(AoA, self).__init__()
+        self.aoa_layer =  nn.Sequential(nn.Linear(2 * d_model, 2 * d_model), nn.GLU())
+        self.dropout_aoa = nn.Dropout(p=dropout_aoa)
 
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c//2, 1, 1)
-        return y
+    def forward(self, query, x):
+        return self.aoa_layer(self.dropout_aoa(torch.cat([x, query], -1)))
 
 class attention(nn.Module):
     def __init__(self,d_model=512, dropout=0.1,h=8):
         super(attention, self).__init__()
-        #self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
+        self.alpha = nn.Parameter(torch.zeros((1,h,1,1)))
         self.d_k = d_model // h
-        # self.alpha = nn.Sequential(nn.Dropout(p=dropout),
-        #                            nn.Linear(self.d_k, 1),
-        #                            nn.Sigmoid() )
-        self.alpha = SELayer(channel=h*2)
 
     def forward(self, query, key, value, mask=None, dropout=None, scores_prev=0, alpha = 0.1):
         "Compute 'Scaled Dot Product Attention'"
@@ -203,8 +191,7 @@ class attention(nn.Module):
         scores = torch.matmul(query, key.transpose(-2, -1)) \
                 / math.sqrt(d_k)
         if torch.is_tensor(scores_prev):
-            # alpha = torch.sigmoid(self.alpha)
-            alpha = self.alpha(torch.cat((scores,scores_prev),1))
+            alpha = torch.sigmoid(self.alpha)
             scores = alpha * scores + (1-alpha) * scores_prev
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
@@ -226,6 +213,7 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.scores = 0
         self.attention = attention(d_model, dropout, h)
+        self.aoa = AoA(d_model=d_model)
         
     def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
@@ -246,6 +234,9 @@ class MultiHeadedAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
              .view(nbatches, -1, self.h * self.d_k)
+
+        # 4) apply AoA
+        x = self.aoa(query.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k),x)
         return self.linears[-1](x)
 
 class PositionwiseFeedForward(nn.Module):
