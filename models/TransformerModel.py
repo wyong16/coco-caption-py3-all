@@ -115,7 +115,7 @@ class SublayerConnection(nn.Module):
 
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
-        return x + self.dropout(sublayer(self.norm(x)))
+        return self.dropout(sublayer(self.norm(x)))
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -125,11 +125,18 @@ class EncoderLayer(nn.Module):
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout, is_encoder=True), 2)
         self.size = size
+        self.bifeat_emb = nn.Sequential(
+            nn.Linear(2 * size, size),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        )
 
     def forward(self, x, mask, scores_prev):
         "Follow Figure 1 (left) for connections."
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask, scores_prev))
-        return self.sublayer[1](x, self.feed_forward)
+        gx = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask, scores_prev))
+        x_ = torch.cat([gx, x], dim = -1)
+        x = self.bifeat_emb(x_) + x
+        return self.sublayer[1](x, self.feed_forward) + x
 
 class Decoder(nn.Module):
     "Generic N layer decoder with masking."
@@ -156,28 +163,28 @@ class DecoderLayer(nn.Module):
         self.src_attn = src_attn
         self.feed_forward = feed_forward
         self.sublayer = clones(SublayerConnection(size, dropout), 3)
+        self.bifeat_emb = clones(nn.Sequential(
+            nn.Linear(2 * size, size),
+            nn.ReLU(),
+            nn.Dropout(dropout)
+        ),2)
  
     def forward(self, x, memory, src_mask, tgt_mask, self_scores_prev, cross_scores_prev):
         "Follow Figure 1 (right) for connections."
         m = memory
-        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask, self_scores_prev))
-        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask, cross_scores_prev))
-        return self.sublayer[2](x, self.feed_forward)
+        gx_1 = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask, self_scores_prev))
+        x_ = torch.cat([gx_1, x], dim = -1)
+        x = self.bifeat_emb[0](x_) + x
+        gx_2 = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask, cross_scores_prev))
+        x_ = torch.cat([gx_2, x], dim = -1)
+        x = self.bifeat_emb[1](x_) + x
+        return self.sublayer[2](x, self.feed_forward) + x
 
 def subsequent_mask(size):
     "Mask out subsequent positions."
     attn_shape = (1, size, size)
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
-
-class AoA(nn.Module):
-    def __init__(self,d_model=512, dropout_aoa=0.3):
-        super(AoA, self).__init__()
-        self.aoa_layer =  nn.Sequential(nn.Linear(2 * d_model, 2 * d_model), nn.GLU())
-        self.dropout_aoa = nn.Dropout(p=dropout_aoa)
-
-    def forward(self, query, x):
-        return self.aoa_layer(self.dropout_aoa(torch.cat([x, query], -1)))
 
 class attention(nn.Module):
     def __init__(self,d_model=512, dropout=0.1,h=8):
@@ -213,7 +220,6 @@ class MultiHeadedAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.scores = 0
         self.attention = attention(d_model, dropout, h)
-        self.aoa = AoA(d_model=d_model)
         
     def forward(self, query, key, value, mask=None, scores_prev=0):
         "Implements Figure 2"
@@ -234,9 +240,6 @@ class MultiHeadedAttention(nn.Module):
         # 3) "Concat" using a view and apply a final linear. 
         x = x.transpose(1, 2).contiguous() \
              .view(nbatches, -1, self.h * self.d_k)
-
-        # 4) apply AoA
-        x = self.aoa(query.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k),x)
         return self.linears[-1](x)
 
 class PositionwiseFeedForward(nn.Module):
